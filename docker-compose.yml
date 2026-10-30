@@ -1,0 +1,46 @@
+# Full-stack deployment: PostgreSQL + FastAPI backend + nginx-served frontend.
+# Override secrets via a root .env file or your orchestrator's secret manager.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: aura
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aura-dev-password}
+      POSTGRES_DB: aura
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aura"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      ENVIRONMENT: production
+      DATABASE_URL: postgresql+psycopg2://aura:${POSTGRES_PASSWORD:-aura-dev-password}@db:5432/aura
+      DB_AUTO_CREATE: "false" # Alembic migrations run at container start (see backend Dockerfile)
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:8080}
+      ADMIN_DEFAULT_EMAIL: ${ADMIN_DEFAULT_EMAIL:-admin@example.com}
+      ADMIN_DEFAULT_PASSWORD: ${ADMIN_DEFAULT_PASSWORD:-ChangeMe!123}
+      CRM_PROVIDER: ${CRM_PROVIDER:-mock}
+      CRM_API_URL: ${CRM_API_URL:-}
+      CRM_API_KEY: ${CRM_API_KEY:-}
+      CRM_FIELD_MAPPING: ${CRM_FIELD_MAPPING:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+    ports:
+      - "8080:80"
+
+volumes:
+  pgdata:
